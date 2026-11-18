@@ -1,0 +1,8 @@
+{
+  "name": "ai-food-photo-check",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "AI 음식 사진 자가진단: 체크리스트 + AI 사진 진단",
+  "engines": { "node": ">=18" }
+}

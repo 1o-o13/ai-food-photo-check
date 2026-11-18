@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>메뉴 사진 vs 실제 음식 비교</title>
+<meta name="description" content="배달앱·메뉴판에 올린 사진과 실제로 나가는 음식 사진을 올리면, 손님이 '사진이랑 다르다'고 느낄 차이를 AI가 찾아드려요.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: 위에는 사진 두 장을 나란히 올리는 비교 카드와 직접 검토 신청 카드, 아래에 결과와 설명 글. 모바일에서는 한 줄로 쌓음. */
+:root {
+  --bg: #f4f5f1;
+  --surface: #ffffff;
+  --ink: #1d2320;
+  --muted: #5d6661;
+  --line: #dde1da;
+  --accent: #2b4c7e;
+  --accent-soft: #e6ecf5;
+  --ok: #2e7d4f;
+  --warn: #b7791f;
+  --bad: #c0392b;
+  --font-display: "Do Hyeon", "IBM Plex Sans KR", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141816; --surface: #1d2220; --ink: #e9ece8; --muted: #a2aba5; --line: #333a36;
+    --accent: #8fb0e3; --accent-soft: #24304a; --ok: #6cc293; --warn: #e3b05a; --bad: #ef7a6c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141816; --surface: #1d2220; --ink: #e9ece8; --muted: #a2aba5; --line: #333a36;
+  --accent: #8fb0e3; --accent-soft: #24304a; --ok: #6cc293; --warn: #e3b05a; --bad: #ef7a6c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.65; word-break: keep-all; }
+a { color: var(--accent); }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h1, h2 { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.01em; }
+p { margin: 0; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+.small { font-size: 14px; color: var(--muted); }
+button { font: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Header */
+.top { padding: 40px 0 28px; border-bottom: 1px solid var(--line); }
+.tag { display: inline-block; font-size: 13px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 3px 10px; border-radius: 999px; }
+.top h1 { font-size: clamp(32px, 6vw, 48px); line-height: 1.15; margin: 14px 0 10px; }
+.top p { max-width: 62ch; color: var(--muted); font-size: 17px; }
+
+/* Main */
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; padding: 28px 0 40px; align-items: start; }
+@media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 16px; }
+.card h2 { font-size: 26px; }
+
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 560px) { .pair { grid-template-columns: 1fr; } }
+.slot { display: grid; gap: 8px; align-content: start; }
+.slot-label { display: flex; align-items: baseline; gap: 8px; font-weight: 700; }
+.slot-label .n { font-family: var(--font-display); font-weight: 400; font-size: 20px; color: var(--accent); }
+.drop { position: relative; display: grid; place-items: center; gap: 8px; aspect-ratio: 4 / 3; border: 2px dashed var(--line); border-radius: 10px; padding: 12px; text-align: center; cursor: pointer; color: var(--muted); font-size: 14px; overflow: hidden; }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop.filled { border-style: solid; padding: 0; }
+.drop img { width: 100%; height: 100%; object-fit: cover; }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.slot .small { font-size: 13px; }
+
+.tips { background: var(--accent-soft); border-radius: 10px; padding: 12px 16px; font-size: 14px; }
+.tips b { color: var(--accent); }
+.tips ul { margin: 4px 0 0; padding-left: 18px; }
+
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 9px 16px; border-radius: 8px; font-size: 15px; font-weight: 600; text-decoration: none; display: inline-block; text-align: center; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.status { font-size: 14px; color: var(--muted); }
+.status.err { color: var(--bad); }
+
+/* Result */
+.result { display: grid; gap: 16px; border-top: 1px solid var(--line); padding-top: 18px; }
+.result[hidden] { display: none; }
+.demo { font-size: 13px; color: var(--warn); font-weight: 700; }
+.score-row { display: flex; align-items: center; gap: 16px; }
+.gauge { width: 96px; height: 96px; flex: none; }
+.gauge circle { fill: none; stroke-width: 10; }
+.gauge .track { stroke: var(--line); }
+.gauge .bar { stroke: var(--muted); stroke-linecap: round; transition: stroke-dashoffset .4s ease, stroke .4s ease; transform: rotate(-90deg); transform-origin: 50% 50%; }
+.gauge text { fill: var(--ink); font-family: var(--font-display); font-size: 28px; text-anchor: middle; dominant-baseline: central; font-variant-numeric: tabular-nums; }
+.gauge-cap { font-size: 12px; color: var(--muted); text-align: center; margin-top: -4px; }
+.level { display: inline-block; font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 999px; color: #fff; background: var(--muted); }
+.summary { font-size: 17px; font-weight: 600; margin-top: 6px; line-height: 1.5; }
+.verdict { font-size: 14px; color: var(--muted); margin-top: 2px; }
+
+.diff { border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 8px; padding: 12px 14px; display: grid; gap: 8px; font-size: 14px; }
+.diff.high { border-left-color: var(--bad); }
+.diff.low { border-left-color: var(--ok); }
+.diff-head { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.chip { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.chip.sev { background: transparent; border: 1px solid currentColor; }
+.vs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .vs { grid-template-columns: 1fr; } }
+.vs div { background: var(--bg); border-radius: 6px; padding: 8px 10px; }
+.vs span { display: block; font-size: 12px; font-weight: 700; color: var(--muted); }
+.impact { font-weight: 600; }
+.fix { color: var(--muted); }
+.fix::before { content: "고치는 법 · "; font-weight: 700; color: var(--accent); }
+.list-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.result ul { margin: 0; padding-left: 20px; font-size: 14px; }
+.next { background: var(--accent-soft); border-radius: 10px; padding: 12px 16px; font-size: 15px; }
+.next b { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .gauge .bar { transition: none; } }
+
+/* Human review */
+.human { position: sticky; top: 16px; }
+@media (max-width: 900px) { .human { position: static; } }
+.human h3 { font-size: 18px; }
+.human ol { margin: 0; padding-left: 20px; font-size: 14px; color: var(--muted); display: grid; gap: 4px; }
+
+/* Article */
+.article { border-top: 1px solid var(--line); padding: 40px 0 56px; }
+.article .col { max-width: 68ch; }
+.article h2 { font-size: 30px; margin: 0 0 14px; }
+.article h3 { font-size: 19px; margin: 28px 0 8px; }
+.article p { margin: 0 0 14px; }
+.steps { margin: 0 0 14px; padding-left: 22px; display: grid; gap: 6px; }
+details { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+summary { cursor: pointer; font-weight: 600; }
+details p { margin: 8px 0 0; color: var(--muted); }
+footer { border-top: 1px solid var(--line); padding: 24px 0 40px; color: var(--muted); font-size: 14px; }
+footer nav { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <span class="tag">사장님을 위한 무료 도구</span>
+    <h1>메뉴 사진과 실제 음식,<br>손님 눈에 얼마나 다를까?</h1>
+    <p>배달앱이나 메뉴판에 올린 사진과, 실제로 손님에게 나가는 음식 사진을 같이 올려주세요. 손님이 "사진이랑 다르네" 하고 실망할 만한 차이를 AI가 찾아서 고치는 방법까지 알려드려요.</p>
+  </div>
+</header>
+
+<div class="wrap main">
+  <section class="card" aria-label="사진 비교하기">
+    <h2>두 사진 비교하기</h2>
+
+    <div class="pair">
+      <div class="slot">
+        <div class="slot-label"><span class="n">1</span>메뉴에 올린 사진</div>
+        <label class="drop" id="dropMenu" for="fileMenu">
+          <input type="file" id="fileMenu" accept="image/jpeg,image/png,image/webp">
+          <span>눌러서 고르거나 끌어다 놓기</span>
+        </label>
+        <p class="small">배달앱, 메뉴판, SNS에 올린 사진이에요. AI로 만든 사진이어도 괜찮아요.</p>
+      </div>
+      <div class="slot">
+        <div class="slot-label"><span class="n">2</span>실제로 나가는 음식</div>
+        <label class="drop" id="dropReal" for="fileReal">
+          <input type="file" id="fileReal" accept="image/jpeg,image/png,image/webp">
+          <span>눌러서 고르거나 끌어다 놓기</span>
+        </label>
+        <p class="small">평소처럼 1인분을 담아서 오늘 찍은 사진이에요. 배달 메뉴라면 배달 용기에 담아 찍어주세요.</p>
+      </div>
+    </div>
+
+    <div class="tips">
+      <b>정확하게 비교하려면</b>
+      <ul>
+        <li>메뉴 사진과 비슷한 각도로 찍어주세요.</li>
+        <li>평소에 손님에게 내는 양과 그릇 그대로 담아주세요.</li>
+        <li>밝은 곳에서 음식 전체가 나오게 찍어주세요.</li>
+      </ul>
+    </div>
+
+    <div class="row">
+      <button class="btn primary" id="compare" type="button" disabled>두 사진 비교하기</button>
+      <button class="btn" id="demoBtn" type="button">예시 결과 보기</button>
+      <span class="status" id="status" role="status">사진 두 장을 올리면 비교할 수 있어요. 하루 3회 무료예요.</span>
+    </div>
+
+    <div class="result" id="result" hidden aria-live="polite">
+      <p class="demo" id="demoNote" hidden>예시 결과예요. 실제 사이트에 배포하면 올린 사진으로 비교해요.</p>
+      <div class="score-row">
+        <div>
+          <svg class="gauge" viewBox="0 0 100 100" aria-hidden="true">
+            <circle class="track" cx="50" cy="50" r="42"></circle>
+            <circle class="bar" id="gBar" cx="50" cy="50" r="42" stroke-dasharray="263.9" stroke-dashoffset="263.9"></circle>
+            <text x="50" y="52" id="gNum">–</text>
+          </svg>
+          <p class="gauge-cap">일치도</p>
+        </div>
+        <div>
+          <span class="level" id="level">–</span>
+          <p class="summary" id="summary"></p>
+          <p class="verdict" id="verdict"></p>
+        </div>
+      </div>
+
+      <div>
+        <p class="list-title" id="diffTitle">손님이 다르다고 느낄 부분</p>
+        <div id="diffs" style="display:grid;gap:10px"></div>
+      </div>
+
+      <div id="matchWrap">
+        <p class="list-title">잘 맞는 부분</p>
+        <ul id="matches"></ul>
+      </div>
+
+      <p class="next" id="next"></p>
+      <p class="small">이 결과는 AI가 사진 두 장만 보고 낸 의견이에요. 각도나 조명 때문에 실제와 다르게 보일 수 있어요.</p>
+    </div>
+  </section>
+
+  <aside class="card human" aria-label="직접 검토 신청">
+    <h3>사람이 직접 봐드려요</h3>
+    <p class="small">메뉴판 전체나 여러 메뉴를 한꺼번에 비교하고 싶다면 신청해주세요. 지금은 무료 시범 운영 중이라 하루에 받는 신청 수가 정해져 있어요.</p>
+    <ol>
+      <li>메뉴 사진과 실제 음식 사진을 짝지어 올려요.</li>
+      <li>2~3일 안에 메뉴별 차이와 개선점을 정리해서 보내드려요.</li>
+      <li>바꾼 사진을 보내주시면 한 번 더 봐드려요.</li>
+    </ol>
+    <a class="btn" id="formLink" href="#" rel="noopener">직접 검토 신청하기</a>
+    <p class="small" id="formNote">신청 폼 주소를 연결하면 이 버튼이 동작해요.</p>
+  </aside>
+</div>
+
+<section class="article">
+  <div class="wrap col">
+    <h2>손님은 사진이 아니라 '차이'에 실망해요</h2>
+    <p>메뉴 사진이 아무리 먹음직스러워도, 받은 음식이 사진과 다르면 손님은 맛보다 먼저 가게를 의심해요. 리뷰에 자주 나오는 "사진이랑 너무 달라요", "양이 사진의 반이에요" 같은 말이 그 신호예요.</p>
+    <p>AI로 메뉴 사진을 만들면 이 차이가 커지기 쉬워요. AI는 실제 가게 음식을 모르기 때문에 고기를 더 두껍게, 토핑을 더 풍성하게, 그릇을 더 고급스럽게 그려내거든요. 사진만 보면 잘 나왔는데, 실제 음식과 나란히 놓고 보면 다른 메뉴처럼 보이는 경우도 많아요.</p>
+    <p>그래서 이 도구는 메뉴 사진만 보고 판단하지 않고, <b>실제로 나가는 음식과 직접 비교</b>해요. 양, 구성, 크기, 그릇, 색, 질감을 하나씩 대조해서 손님이 실망할 만한 부분부터 알려드려요.</p>
+
+    <h3>AI를 아예 쓰지 말아야 할까요?</h3>
+    <p>그렇지 않아요. 핵심은 <b>AI로 음식을 새로 만들지 말고, 실제로 찍은 사진을 다듬는 데 쓰는 것</b>이에요. 실제 음식을 찍은 뒤 밝기나 배경 정도만 AI로 손보면 비용은 거의 그대로 아끼면서, 손님이 받는 음식과 사진이 같아져요.</p>
+
+    <h3>비교 결과가 나쁘게 나왔다면</h3>
+    <ol class="steps">
+      <li>차이가 '높음'으로 나온 메뉴부터 고르세요. 주문이 많은 대표 메뉴 3개부터 바꾸면 충분해요.</li>
+      <li>양이나 구성이 다르다면, 사진을 실제에 맞추는 게 가장 확실해요. 실제 1인분을 그대로 담아 다시 찍으세요.</li>
+      <li>창가 자연광 아래에서 45도 각도로 찍고, AI 보정은 밝기와 색감까지만 해요.</li>
+      <li>바꾼 사진과 실제 음식을 다시 비교해서 일치도가 올랐는지 확인하세요.</li>
+      <li>바꾼 뒤 2~4주 동안 주문 수와 리뷰 반응을 비교해보세요.</li>
+    </ol>
+
+    <h3>자주 묻는 질문</h3>
+    <details>
+      <summary>메뉴 사진이 AI로 만든 건지도 알려주나요?</summary>
+      <p>아니요. AI로 만든 사진인지는 정확히 판정할 수 없어요. 대신 손님 입장에서 더 중요한 '실제 음식과 얼마나 다른지'를 알려드려요.</p>
+    </details>
+    <details>
+      <summary>사진 두 장의 각도가 달라도 되나요?</summary>
+      <p>비교는 되지만 정확도가 떨어져요. 메뉴 사진과 비슷한 각도로 찍을수록 결과가 정확해요. 비교하기 어려운 부분은 결과에 따로 알려드려요.</p>
+    </details>
+    <details>
+      <summary>올린 사진은 저장되나요?</summary>
+      <p>아니요. 사진은 비교하는 데만 쓰고 저장하지 않아요.</p>
+    </details>
+    <details>
+      <summary>사진과 실제 음식이 달라도 법적으로 문제가 없나요?</summary>
+      <p>실제와 크게 다른 사진은 광고 관련 법에서 문제가 될 수 있다는 지적이 있어요. 상황마다 판단이 달라질 수 있으니, 걱정된다면 전문가에게 확인해보세요.</p>
+    </details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <nav aria-label="사이트 정보"><span>소개</span><span>개인정보처리방침</span><span>문의</span></nav>
+    <p>비교 결과는 참고용이며, 사진의 AI 생성 여부를 판정하지 않아요.</p>
+  </div>
+</footer>
+
+<script>
+// 직접 검토 신청 폼 주소 (Tally 등에서 만든 폼 링크를 넣으세요)
+const FORM_URL = "";
+const FREE_PER_DAY = 3;
+const USE_KEY = "menuVsReal.uses";
+
+const DEMO = {
+  match_score: 46, level: "차이가 커요", verdict: "사진을 바꾸는 게 좋아요",
+  summary: "같은 제육볶음이지만, 메뉴 사진의 양과 고명이 실제보다 많이 풍성해 보여요.",
+  differences: [
+    { aspect: "양", severity: "높음", menu_photo: "고기가 접시 위로 수북하게 쌓여 있어요.", real_photo: "접시 바닥이 보일 정도로 평평하게 담겨 있어요.", customer_impact: "받자마자 양이 적다고 느낄 가능성이 커요.", fix: "실제 1인분을 그대로 담아 다시 찍어주세요." },
+    { aspect: "구성", severity: "높음", menu_photo: "위에 깨, 쪽파, 통깻잎이 올라가 있어요.", real_photo: "깨만 조금 뿌려져 있어요.", customer_impact: "빠진 재료가 있다고 생각할 수 있어요.", fix: "실제로 올리지 않는 쪽파와 깻잎은 사진에서 빼주세요." },
+    { aspect: "그릇과 플레이팅", severity: "중간", menu_photo: "검은 무쇠 팬에 담겨 있어요.", real_photo: "배달용 플라스틱 용기에 담겨 있어요.", customer_impact: "배달 손님은 다른 음식이 온 것처럼 느낄 수 있어요.", fix: "배달 메뉴는 배달 용기에 담은 사진을 함께 올려주세요." },
+    { aspect: "질감", severity: "낮음", menu_photo: "양념이 코팅한 것처럼 번들거려요.", real_photo: "양념이 자연스럽게 묻어 있어요.", customer_impact: "크게 실망하지는 않지만 사진이 과장돼 보일 수 있어요.", fix: "보정할 때 광택과 선명도를 낮춰주세요." }
+  ],
+  matches: ["고기 색과 양념 색이 비슷해요.", "고기를 썬 크기가 비슷해요."],
+  next_step: "오늘 영업 전에 실제 1인분을 배달 용기에 담아 같은 각도로 한 장 찍어보세요."
+};
+
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const photos = { menu: null, real: null };
+
+function usesToday() {
+  try { const s = JSON.parse(localStorage.getItem(USE_KEY) || "{}"); return s.day === new Date().toDateString() ? s.n : 0; }
+  catch (e) { return 0; }
+}
+function addUse() {
+  try { localStorage.setItem(USE_KEY, JSON.stringify({ day: new Date().toDateString(), n: usesToday() + 1 })); } catch (e) {}
+}
+function setStatus(msg, isErr) { const s = $("status"); s.textContent = msg; s.classList.toggle("err", !!isErr); }
+
+// 사진을 긴 변 1024px로 줄여서 비용과 전송 시간을 아낍니다.
+function shrink(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1024 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      const dataUrl = c.toDataURL("image/jpeg", 0.85);
+      resolve({ dataUrl, data: dataUrl.split(",")[1], mediaType: "image/jpeg" });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("load")); };
+    img.src = url;
+  });
+}
+
+function setupSlot(key, dropId, inputId, label) {
+  const drop = $(dropId), input = $(inputId);
+  async function pick(file) {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { setStatus("JPG, PNG, WEBP 사진만 올릴 수 있어요.", true); return; }
+    try {
+      const p = await shrink(file);
+      photos[key] = p;
+      drop.querySelector("span")?.remove();
+      let img = drop.querySelector("img");
+      if (!img) { img = document.createElement("img"); drop.appendChild(img); }
+      img.src = p.dataUrl; img.alt = label + " 미리보기";
+      drop.classList.add("filled");
+      refresh();
+    } catch (e) { setStatus("사진을 열지 못했어요. 다른 사진으로 시도해주세요.", true); }
+  }
+  input.addEventListener("change", (e) => pick(e.target.files[0]));
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); pick(e.dataTransfer.files[0]); });
+}
+
+function refresh() {
+  const ready = photos.menu && photos.real;
+  $("compare").disabled = !ready;
+  if (ready) setStatus(`준비됐어요. 오늘 남은 무료 비교: ${Math.max(0, FREE_PER_DAY - usesToday())}회`);
+  else if (photos.menu) setStatus("이제 실제로 나가는 음식 사진을 올려주세요.");
+  else if (photos.real) setStatus("이제 메뉴에 올린 사진을 올려주세요.");
+}
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function showResult(r, isDemo) {
+  $("result").hidden = false;
+  $("demoNote").hidden = !isDemo;
+  const s = r.match_score;
+  const key = s >= 80 ? "ok" : s >= 60 ? "warn" : "bad";
+  const color = css("--" + key);
+  $("gNum").textContent = s;
+  $("gBar").style.strokeDashoffset = 263.9 * (1 - s / 100);
+  $("gBar").style.stroke = color;
+  $("level").textContent = r.level; $("level").style.background = color;
+  $("summary").textContent = r.summary;
+  $("verdict").textContent = r.verdict ? "판단: " + r.verdict : "";
+
+  const box = $("diffs"); box.innerHTML = "";
+  if (!r.differences.length) box.appendChild(el("p", "small", "눈에 띄는 차이를 찾지 못했어요."));
+  r.differences.forEach((d) => {
+    const sevKey = d.severity === "높음" ? "high" : d.severity === "낮음" ? "low" : "";
+    const card = el("div", "diff " + sevKey);
+    const head = el("div", "diff-head");
+    head.appendChild(el("span", "chip", d.aspect));
+    const sev = el("span", "chip sev", "중요도 " + d.severity);
+    sev.style.color = css(sevKey === "high" ? "--bad" : sevKey === "low" ? "--ok" : "--warn");
+    head.appendChild(sev);
+    const vs = el("div", "vs");
+    const a = el("div"); a.appendChild(el("span", null, "메뉴 사진")); a.append(d.menu_photo);
+    const b = el("div"); b.appendChild(el("span", null, "실제 음식")); b.append(d.real_photo);
+    vs.append(a, b);
+    card.append(head, vs);
+    if (d.customer_impact) card.appendChild(el("p", "impact", d.customer_impact));
+    if (d.fix) card.appendChild(el("p", "fix", d.fix));
+    box.appendChild(card);
+  });
+
+  const ul = $("matches"); ul.innerHTML = "";
+  r.matches.forEach((m) => ul.appendChild(el("li", null, m)));
+  $("matchWrap").hidden = !r.matches.length;
+
+  const next = $("next"); next.innerHTML = "";
+  if (r.next_step) { next.appendChild(el("b", null, "지금 바로 할 일 · ")); next.append(r.next_step); }
+  next.hidden = !r.next_step;
+}
+
+setupSlot("menu", "dropMenu", "fileMenu", "메뉴 사진");
+setupSlot("real", "dropReal", "fileReal", "실제 음식 사진");
+
+$("compare").addEventListener("click", async () => {
+  if (!photos.menu || !photos.real) return;
+  if (usesToday() >= FREE_PER_DAY) { setStatus(`오늘 무료 비교 ${FREE_PER_DAY}회를 모두 썼어요. 내일 다시 이용해주세요.`, true); return; }
+  $("compare").disabled = true;
+  setStatus("두 사진을 비교하고 있어요. 15초 정도 걸려요.");
+  try {
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        menuImage: { data: photos.menu.data, mediaType: photos.menu.mediaType },
+        realImage: { data: photos.real.data, mediaType: photos.real.mediaType }
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setStatus(data.error || "비교하지 못했어요. 잠시 뒤에 다시 시도해주세요.", true); return; }
+    if (!data.both_food) { setStatus("음식 사진이 아닌 것 같아요. 두 장 모두 음식 사진으로 올려주세요.", true); return; }
+    addUse();
+    showResult(data, false);
+    setStatus(data.same_dish
+      ? `비교 완료. 오늘 남은 무료 비교: ${Math.max(0, FREE_PER_DAY - usesToday())}회`
+      : "두 사진이 서로 다른 메뉴로 보여요. 같은 메뉴 사진인지 확인해주세요.", !data.same_dish);
+  } catch (e) {
+    // 서버가 없는 미리보기 환경에서는 예시 결과를 보여줍니다.
+    showResult(DEMO, true);
+    setStatus("미리보기에서는 비교 서버에 연결할 수 없어서 예시 결과를 보여드려요.");
+  } finally {
+    $("compare").disabled = !(photos.menu && photos.real);
+  }
+});
+
+$("demoBtn").addEventListener("click", () => { showResult(DEMO, true); $("result").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); });
+
+if (FORM_URL) { $("formLink").href = FORM_URL; $("formNote").hidden = true; }
+else { $("formLink").addEventListener("click", (e) => e.preventDefault()); }
+
+// 처음 열었을 때도 결과 모양을 볼 수 있게 예시를 보여줍니다.
+showResult(DEMO, true);
+</script>
+</body>
+</html>
